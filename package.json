@@ -16,6 +16,7 @@
     "@sveltejs/adapter-auto": "^4.0.0",
     "@sveltejs/kit": "^2.16.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@tailwindcss/vite": "^4.1.4",
     "prettier": "^3.5.3",
     "prettier-plugin-svelte": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.11",
@@ -28,5 +29,11 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
+  },
+  "packageManager": "pnpm@10.9.0+sha512.0486e394640d3c1fb3c9d43d49cf92879ff74f8516959c235308f5a8f62e2e19528a65cdc2a3058f587cde71eba3d5b56327c8c33a97e4c4051ca48a10ca2d5f",
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.2.0",
+    "tailwindcss": "^4.1.4"
   }
 }
