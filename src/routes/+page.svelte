@@ -1,10 +1,9 @@
 <script>
-  let count = $state(0);
+  import Button from '$lib/components/Button.svelte';
+  import { cn } from '$lib/utils';
 </script>
 
-<h1>Hello Svelte World</h1>
-<p>count : {count}</p>
-<div>
-  <button onclick={() => count++}>+</button>
-  <button onclick={() => count--}>-</button>
-</div>
+<section class={cn('flex flex-col items-center justify-center gap-4', 'h-screen')}>
+  <h1 class="text-4xl font-bold">Hello World</h1>
+  <Button onclick={() => console.log('clicked')}>Click me</Button>
+</section>
