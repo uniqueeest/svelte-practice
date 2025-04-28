@@ -1,9 +1,22 @@
 <script>
-  import Button from '$lib/components/Button.svelte';
-  import { cn } from '$lib/utils';
+  import Wordle from '$lib/components/Wordle.svelte';
 </script>
 
-<section class={cn('flex flex-col items-center justify-center gap-4', 'h-screen')}>
-  <h1 class="text-4xl font-bold">Hello World</h1>
-  <Button onclick={() => console.log('clicked')}>Click me</Button>
-</section>
+<style>
+  main {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 1rem;
+    text-align: center;
+  }
+
+  h1 {
+    margin-bottom: 2rem;
+    color: #333;
+  }
+</style>
+
+<main class="mx-auto max-w-xl p-4 text-center">
+  <h1 class="mb-8 text-3xl font-bold text-gray-800">Wordle 게임</h1>
+  <Wordle />
+</main>
