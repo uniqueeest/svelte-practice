@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { fly, fade } from 'svelte/transition';
-  import { quintOut, cubicOut } from 'svelte/easing';
+  import { fade } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { browser } from '$app/environment';
+  import { cn } from '$lib/utils';
+  import Button from '$lib/components/Button.svelte';
 
   interface Bar {
     id: number;
@@ -16,15 +18,9 @@
     fallen: boolean;
   }
 
-  interface ScorePopup {
-    id: number;
-    x: number;
-    y: number;
-    value: number;
-  }
-
+  const BAR_WIDTH = 40;
+  const BAR_HEIGHT = 120;
   let level = 1;
-  let score = 0;
   let gameRunning = false;
   let gamePaused = false;
   let gameOver = false;
@@ -34,21 +30,19 @@
   let gameHeight = 0;
   let bars: Bar[] = [];
   let animationId: number | null = null;
-  let barCount = 3; // 시작 봉 개수
   let nextBarId = 0;
   let missedBars = 0;
-  let maxMissedBars = 5; // 놓칠 수 있는 최대 봉 개수
-  let scorePopups: ScorePopup[] = [];
-  let nextPopupId = 0;
-  let lastLevelUp = 0;
   let showLevelUp = false;
-  let requiredCatchesToClearLevel = 10; // 레벨 클리어에 필요한 캐치 수
   let catchesInCurrentLevel = 0;
+  let fallTimers: number[] = []; // 봉 떨어지는 타이머 저장
 
-  // 레벨에 따른 봉 개수 계산
-  $: {
-    barCount = Math.min(3 + level - 1, 12); // 레벨 1은 3개, 최대 12개
-  }
+  // 레벨당 필요한 캐치 수와 봉 개수는 레벨에 따라 계산
+  $: barsPerLevel = Math.min(2 + level, 12);
+  $: requiredCatchesToClearLevel = barsPerLevel;
+  // 동시에 떨어질 수 있는 최대 봉 개수 (레벨에 따라 증가)
+  $: maxSimultaneousBars = Math.min(1 + Math.floor(level / 2), 5);
+  // 봉이 떨어질 확률 (0~1 사이 값, 레벨이 높을수록 확률 증가)
+  $: fallProbability = Math.min(0.3 + level * 0.05, 0.7);
 
   // 레벨에 따른 배경색 효과
   $: levelBackground = getLevelBackground(level);
@@ -65,7 +59,7 @@
     '#34495e', // 네이비
   ];
 
-  // 레벨별 배경색 효과
+  // 레벨별 배경색 효과 (순수 함수)
   function getLevelBackground(level: number): string {
     switch (level) {
       case 1:
@@ -102,16 +96,21 @@
       level++;
       levelCompleted = false;
       catchesInCurrentLevel = 0;
-      bars = [];
-      scorePopups = [];
 
-      // 초기 봉 생성
-      createInitialBars();
+      // 타이머 초기화
+      clearAllFallTimers();
+
+      // 봉 초기화 - 기존 봉 완전히 제거
+      bars = [];
+
+      // 새 레벨에 맞는 봉 개수로 새로 생성
+      const newBarsCount = Math.min(2 + level, 12);
+      bars = createBars(gameWidth, newBarsCount);
 
       // 봉 떨어지기 시작
       setTimeout(() => {
         if (gameRunning && !gamePaused && !gameOver && !levelCompleted) {
-          startRandomBarFalling();
+          startMultipleBars(level);
         }
       }, 1000);
     } else if (gameOver || !gameRunning) {
@@ -120,22 +119,23 @@
       gamePaused = false;
       gameOver = false;
       levelCompleted = false;
-      score = 0;
       level = 1;
       missedBars = 0;
       catchesInCurrentLevel = 0;
       bars = []; // 기존 봉 모두 제거
-      scorePopups = [];
       nextBarId = 0;
-      nextPopupId = 0;
 
-      // 초기 봉 생성
-      createInitialBars();
+      // 타이머 초기화
+      clearAllFallTimers();
+
+      // 레벨 1에 맞는 봉 개수로 생성
+      const initialBarsCount = 3; // 레벨 1은 3개
+      bars = createBars(gameWidth, initialBarsCount);
 
       // 봉 떨어지기 시작
       setTimeout(() => {
         if (gameRunning && !gamePaused && !gameOver && !levelCompleted) {
-          startRandomBarFalling();
+          startMultipleBars(level);
         }
       }, 1000);
     } else if (gamePaused) {
@@ -146,31 +146,58 @@
     animate();
   }
 
-  // 초기 봉 생성 (모두 상단에 위치)
-  function createInitialBars() {
-    const barWidth = 40; // 봉의 두께
-    const spacing = (gameWidth - barCount * barWidth) / (barCount + 1);
+  // 게임 재시작
+  function restartGame() {
+    gameRunning = true;
+    gamePaused = false;
+    gameOver = false;
+    levelCompleted = false;
+    level = 1;
+    missedBars = 0;
+    catchesInCurrentLevel = 0;
+    bars = []; // 기존 봉 모두 제거
+    nextBarId = 0;
 
-    for (let i = 0; i < barCount; i++) {
-      const height = Math.random() * 60 + 80; // 봉의 길이 (80~140px)
-      const x = spacing + i * (barWidth + spacing);
+    // 타이머 초기화
+    clearAllFallTimers();
+
+    // 레벨 1에 맞는 봉 개수로 생성
+    const initialBarsCount = 3; // 레벨 1은 3개
+    bars = createBars(gameWidth, initialBarsCount);
+
+    // 봉 떨어지기 시작
+    setTimeout(() => {
+      if (gameRunning && !gamePaused && !gameOver && !levelCompleted) {
+        startMultipleBars(level);
+      }
+    }, 1000);
+
+    animate();
+  }
+
+  // 봉 생성 함수 (순수 함수)
+  function createBars(width: number, count: number): Bar[] {
+    const spacing = (width - count * BAR_WIDTH) / (count + 1);
+    const newBars: Bar[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const x = spacing + i * (BAR_WIDTH + spacing);
       const color = colors[Math.floor(Math.random() * colors.length)];
 
-      bars = [
-        ...bars,
-        {
-          id: nextBarId++,
-          x,
-          y: 20, // 상단 여백
-          height,
-          width: barWidth,
-          speed: 0, // 처음에는 움직이지 않음
-          caught: false,
-          color,
-          fallen: false,
-        },
-      ];
+      newBars.push({
+        id: nextBarId++,
+        x,
+        y: 20,
+        height: BAR_HEIGHT,
+        width: BAR_WIDTH,
+        speed: 0, // 처음에는 움직이지 않음
+        caught: false,
+        color,
+        fallen: false,
+      });
     }
+
+    return newBars;
   }
 
   // 게임 일시정지
@@ -192,6 +219,9 @@
       cancelAnimationFrame(animationId);
       animationId = null;
     }
+
+    // 타이머 초기화
+    clearAllFallTimers();
   }
 
   // 레벨 클리어 처리
@@ -201,6 +231,9 @@
       cancelAnimationFrame(animationId);
       animationId = null;
     }
+
+    // 타이머 초기화
+    clearAllFallTimers();
 
     // 레벨 클리어 시 잡은 봉이 서서히 사라지는 효과
     setTimeout(() => {
@@ -216,8 +249,54 @@
     }, 2000);
   }
 
+  // 모든 타이머 초기화
+  function clearAllFallTimers() {
+    for (const timer of fallTimers) {
+      clearTimeout(timer);
+    }
+    fallTimers = [];
+  }
+
+  // 여러 개의 봉이 동시에 떨어지게 함
+  function startMultipleBars(currentLevel: number) {
+    // 현재 떨어지고 있는 봉의 개수 (fallen이 true이고 caught가 false인 봉)
+    const currentlyFallingBars = bars.filter((bar) => bar.fallen && !bar.caught).length;
+
+    // 모든 봉이 이미 떨어지고 있거나 잡힌 경우
+    const notFallenBars = bars.filter((bar) => !bar.fallen && !bar.caught);
+    if (notFallenBars.length === 0) {
+      scheduleNextCheck(currentLevel);
+      return;
+    }
+
+    // 랜덤 확률로 떨어질지 결정
+    const shouldDropBar = Math.random() < fallProbability;
+
+    if (shouldDropBar && currentlyFallingBars < maxSimultaneousBars) {
+      // 랜덤하게 하나의 봉을 떨어뜨림
+      startRandomBarFalling(currentLevel);
+    }
+
+    // 다음 체크 예약
+    scheduleNextCheck(currentLevel);
+  }
+
+  // 다음 체크 시간 예약
+  function scheduleNextCheck(currentLevel: number) {
+    // 다음 봉이 떨어지기까지의 시간 (레벨이 높을수록 더 빨리)
+    const nextFallDelay = Math.max(500 - currentLevel * 40, 200);
+
+    const timer = setTimeout(() => {
+      if (gameRunning && !gamePaused && !gameOver && !levelCompleted) {
+        startMultipleBars(currentLevel);
+      }
+    }, nextFallDelay);
+
+    fallTimers.push(timer);
+  }
+
   // 랜덤하게 봉이 떨어지기 시작
-  function startRandomBarFalling() {
+  function startRandomBarFalling(currentLevel: number) {
     // 아직 떨어지지 않은 봉들 중에서 선택
     const notFallenBars = bars.filter((bar) => !bar.fallen && !bar.caught);
 
@@ -228,20 +307,10 @@
     const randomBar = notFallenBars[randomIndex];
 
     // 봉의 속도 설정 (레벨에 따라 증가)
-    const speed = Math.random() * (1 + level * 0.3) + (1 + level * 0.2);
+    const speed = Math.random() * (1 + currentLevel * 0.3) + (1 + currentLevel * 0.2);
 
     // 선택된 봉이 떨어지기 시작
     bars = bars.map((bar) => (bar.id === randomBar.id ? { ...bar, speed, fallen: true } : bar));
-
-    // 다음 봉이 떨어지기까지의 시간 (레벨이 높을수록 더 빨리)
-    const nextFallDelay = Math.max(800 - level * 50, 300);
-
-    // 다음 봉 떨어뜨리기 예약
-    setTimeout(() => {
-      if (gameRunning && !gamePaused && !gameOver && !levelCompleted) {
-        startRandomBarFalling();
-      }
-    }, nextFallDelay);
   }
 
   // 봉 클릭 처리
@@ -250,12 +319,7 @@
 
     if (!bar.caught && bar.fallen) {
       // 봉 캐치 성공
-      const pointsEarned = Math.max(1, Math.floor(10 - bar.height / 20));
-      score += pointsEarned;
       catchesInCurrentLevel++;
-
-      // 점수 팝업 생성
-      createScorePopup(bar.x + bar.width / 2, bar.y + bar.height / 2, pointsEarned);
 
       // 봉을 잡은 상태로 표시
       bars = bars.map((b) => (b.id === bar.id ? { ...b, caught: true } : b));
@@ -267,21 +331,29 @@
     }
   }
 
-  // 점수 팝업 생성
-  function createScorePopup(x: number, y: number, value: number) {
-    const popup = {
-      id: nextPopupId++,
-      x,
-      y,
-      value,
+  // 봉 이동 처리 (순수 함수)
+  function moveBar(bar: Bar, gameHeight: number): { bar: Bar; gameOver: boolean } {
+    // 이미 잡혔거나 아직 떨어지지 않은 봉은 움직이지 않음
+    if (bar.caught || !bar.fallen) {
+      return { bar, gameOver: false };
+    }
+
+    // 봉 이동
+    const newY = bar.y + bar.speed;
+
+    // 화면 밖으로 나갔는지 체크
+    if (newY > gameHeight) {
+      // 잡히지 않고 화면 밖으로 나간 봉
+      return {
+        bar: { ...bar, caught: true },
+        gameOver: true,
+      };
+    }
+
+    return {
+      bar: { ...bar, y: newY },
+      gameOver: false,
     };
-
-    scorePopups = [...scorePopups, popup];
-
-    // 2초 후 제거
-    setTimeout(() => {
-      scorePopups = scorePopups.filter((p) => p.id !== popup.id);
-    }, 2000);
   }
 
   // 게임 루프
@@ -289,28 +361,19 @@
     if (gamePaused || gameOver || levelCompleted) return;
 
     // 봉 이동
+    let shouldEndGame = false;
+
     bars = bars.map((bar) => {
-      // 이미 잡혔거나 아직 떨어지지 않은 봉은 움직이지 않음
-      if (bar.caught || !bar.fallen) return bar;
-
-      // 봉 이동
-      const newY = bar.y + bar.speed;
-
-      // 화면 밖으로 나갔는지 체크
-      if (newY > gameHeight) {
-        missedBars++;
-
-        // 게임 오버 체크
-        if (missedBars >= maxMissedBars) {
-          endGame();
-        }
-
-        // 잡히지 않고 화면 밖으로 나간 봉 제거
-        return { ...bar, caught: true };
+      const result = moveBar(bar, gameHeight);
+      if (result.gameOver) {
+        shouldEndGame = true;
       }
-
-      return { ...bar, y: newY };
+      return result.bar;
     });
+
+    if (shouldEndGame) {
+      endGame();
+    }
 
     // 모든 봉이 떨어졌고 화면에 남은 봉이 없는 경우 새 봉 생성
     const activeBars = bars.filter((bar) => !bar.caught);
@@ -320,13 +383,17 @@
       // 화면에 있는 모든 봉 제거
       bars = [];
 
-      // 새로운 봉 생성
-      createInitialBars();
+      // 타이머 초기화
+      clearAllFallTimers();
+
+      // 현재 레벨에 맞는 정확한 수의 봉 생성
+      const currentBarsCount = Math.min(2 + level, 12);
+      bars = createBars(gameWidth, currentBarsCount);
 
       // 일정 시간 후 새 봉이 떨어지기 시작
       setTimeout(() => {
         if (gameRunning && !gamePaused && !gameOver && !levelCompleted) {
-          startRandomBarFalling();
+          startMultipleBars(level);
         }
       }, 1000);
     }
@@ -368,6 +435,9 @@
       cancelAnimationFrame(animationId);
     }
 
+    // 타이머 초기화
+    clearAllFallTimers();
+
     // 키보드 이벤트 리스너 제거
     if (browser) {
       window.removeEventListener('keydown', handleKeyDown);
@@ -376,86 +446,6 @@
 </script>
 
 <style>
-  .container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-    padding: 20px;
-    max-width: 800px;
-    margin: 0 auto;
-  }
-
-  .game-header {
-    display: flex;
-    justify-content: space-between;
-    width: 100%;
-    align-items: center;
-    background-color: #fff;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-
-  .score,
-  .level,
-  .progress,
-  .missed-bars {
-    font-size: 18px;
-    font-weight: bold;
-    margin-bottom: 5px;
-  }
-
-  .progress {
-    color: #3498db;
-  }
-
-  .missed-bars {
-    color: #e74c3c;
-  }
-
-  button {
-    padding: 10px 20px;
-    background-color: #4caf50;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 16px;
-    transition: background-color 0.2s;
-  }
-
-  button:hover {
-    background-color: #45a049;
-  }
-
-  button:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-  }
-
-  .game-area {
-    position: relative;
-    width: 100%;
-    height: 500px;
-    border: 2px solid #333;
-    border-radius: 8px;
-    overflow: hidden;
-    transition: background 0.5s ease;
-  }
-
-  .bar {
-    position: absolute;
-    border-radius: 5px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    transition:
-      background-color 0.3s,
-      opacity 0.3s,
-      transform 0.3s;
-    cursor: pointer;
-    will-change: transform, opacity;
-  }
-
   .bar.caught {
     opacity: 0.5;
     transform: scale(0.95);
@@ -463,15 +453,6 @@
 
   .bar.falling {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  }
-
-  .score-popup {
-    position: absolute;
-    color: #4caf50;
-    font-weight: bold;
-    font-size: 18px;
-    transform: translate(-50%, -50%);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 
   .level-up {
@@ -527,50 +508,57 @@
   <title>떨어지는 봉 잡기 게임</title>
 </svelte:head>
 
-<div class="container">
-  <div class="game-header">
-    <div>
-      <div class="score">점수: {score}</div>
-      <div class="level">레벨: {level}</div>
+<div class={cn('flex flex-col items-center gap-5', 'mx-auto p-5 lg:max-w-[800px]')}>
+  <div class={cn('flex w-full items-center justify-between', 'rounded-lg bg-white p-5 shadow-md')}>
+    <h2 class={cn('text-lg font-bold')}>레벨: {level}</h2>
+    <div class={cn('flex flex-col items-center gap-2')}>
+      <div class={cn('text-sm font-bold', 'text-blue-500')}>
+        진행도: {catchesInCurrentLevel}/{requiredCatchesToClearLevel}
+      </div>
+      <div class={cn('text-sm font-bold', 'text-red-500')}>하나라도 놓치면 게임오버!</div>
     </div>
-    <div>
-      <div class="progress">진행도: {catchesInCurrentLevel}/{requiredCatchesToClearLevel}</div>
-      <div class="missed-bars">놓친 봉: {missedBars}/{maxMissedBars}</div>
-    </div>
-    <div class="controls">
+    <div class={cn('flex gap-2')}>
       {#if levelCompleted}
-        <button on:click={startGame}> 다음 레벨 </button>
+        <Button onclick={startGame}>다음 레벨</Button>
       {:else if !gameRunning || gameOver}
-        <button on:click={startGame}>
-          {gameOver ? '다시 시작' : '게임 시작'}
-        </button>
+        <Button onclick={startGame}>게임 시작</Button>
       {:else if gamePaused}
-        <button on:click={startGame}> 계속하기 </button>
+        <Button color="secondary" onclick={startGame}>계속하기</Button>
+        <Button onclick={restartGame}>다시 시작</Button>
       {:else}
-        <button on:click={pauseGame}> 일시정지 </button>
+        <Button color="secondary" onclick={pauseGame}>일시정지</Button>
+        <Button onclick={restartGame}>다시 시작</Button>
       {/if}
     </div>
   </div>
 
-  <div class="game-area" bind:this={gameArea} style="background: {levelBackground};">
+  <div
+    class={cn(
+      'relative',
+      'h-[500px] w-full',
+      'overflow-hidden rounded-lg border border-[#333]',
+      'transition-background ease duration-500',
+    )}
+    bind:this={gameArea}
+    style="background: {levelBackground};"
+  >
     {#each bars as bar (bar.id)}
-      <div
-        class="bar"
-        class:caught={bar.caught}
-        class:falling={bar.fallen && !bar.caught}
-        on:click={() => handleBarClick(bar)}
-        style="left: {bar.x}px; top: {bar.y}px; width: {bar.width}px; height: {bar.height}px; background-color: {bar.color};"
-      ></div>
-    {/each}
-
-    {#each scorePopups as popup (popup.id)}
-      <div
-        class="score-popup"
-        style="left: {popup.x}px; top: {popup.y}px;"
-        transition:fly={{ y: -50, duration: 2000, easing: quintOut }}
-      >
-        +{popup.value}
-      </div>
+      <button
+        class={cn(
+          'absolute',
+          'h-[120px] w-10',
+          'rounded-lg',
+          'box-shadow',
+          'cursor-pointer',
+          'will-change-opacity will-change-transform',
+          bar.caught && 'opacity-50',
+          bar.fallen && !bar.caught && 'box-shadow',
+        )}
+        aria-label="봉"
+        onkeydown={() => {}}
+        onclick={() => handleBarClick(bar)}
+        style="left: {bar.x}px; top: {bar.y}px; background-color: {bar.color};"
+      ></button>
     {/each}
 
     {#if showLevelUp}
@@ -582,8 +570,7 @@
     {#if levelCompleted}
       <div class="game-message level-clear">
         <h2>레벨 {level} 클리어!</h2>
-        <p>점수: {score}</p>
-        <button on:click={startGame}>다음 레벨</button>
+        <Button color="primary" onclick={startGame}>다음 레벨</Button>
       </div>
     {/if}
 
@@ -598,9 +585,8 @@
     {#if gameOver}
       <div class="game-message game-over">
         <h2>게임 오버!</h2>
-        <p>최종 점수: {score}</p>
         <p>최종 레벨: {level}</p>
-        <button on:click={startGame}>다시 시작</button>
+        <Button onclick={startGame}>다시 시작</Button>
       </div>
     {/if}
   </div>
@@ -608,10 +594,9 @@
   <div class="instructions">
     <h2>게임 방법</h2>
     <p>떨어지는 봉을 클릭하여 잡으세요!</p>
-    <p>더 짧은 봉을 잡을수록 더 많은 점수를 얻습니다.</p>
-    <p>레벨 당 {requiredCatchesToClearLevel}개의 봉을 잡으면 다음 레벨로 넘어갑니다.</p>
+    <p>레벨 당 {requiredCatchesToClearLevel}개의 봉을 모두 잡으면 다음 레벨로 넘어갑니다.</p>
     <p>레벨이 올라갈수록 봉이 더 빨리, 더 많이 떨어집니다.</p>
     <p>'P' 키나 'ESC' 키를 눌러 게임을 일시정지할 수 있습니다.</p>
-    <p>봉을 {maxMissedBars}개 이상 놓치면 게임이 종료됩니다.</p>
+    <p>봉을 하나라도 놓치면 게임이 종료됩니다!</p>
   </div>
 </div>
