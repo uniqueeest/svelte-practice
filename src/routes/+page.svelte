@@ -1,11 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { fade } from 'svelte/transition';
-  import { cubicOut } from 'svelte/easing';
   import { browser } from '$app/environment';
   import { cn } from '$lib/utils';
   import Button from '$lib/components/Button.svelte';
-
+  import Modal from '$lib/components/Modal.svelte';
   interface Bar {
     id: number;
     x: number;
@@ -18,7 +16,7 @@
     fallen: boolean;
   }
 
-  const BAR_WIDTH = 40;
+  let BAR_WIDTH = 40; // 기본 너비 (데스크탑)
   const BAR_HEIGHT = 120;
   let level = 1;
   let gameRunning = false;
@@ -35,6 +33,7 @@
   let showLevelUp = false;
   let catchesInCurrentLevel = 0;
   let fallTimers: number[] = []; // 봉 떨어지는 타이머 저장
+  let isMobile = false;
 
   // 레벨당 필요한 캐치 수와 봉 개수는 레벨에 따라 계산
   $: barsPerLevel = Math.min(2 + level, 12);
@@ -424,11 +423,36 @@
     gameWidth = rect.width;
     gameHeight = rect.height;
 
+    // 모바일 환경 체크 및 봉 너비 조정
+    checkAndAdjustBarWidth();
+
+    // 화면 크기 변경 감지
+    if (browser) {
+      window.addEventListener('resize', checkAndAdjustBarWidth);
+    }
+
     // 키보드 이벤트 리스너 등록
     if (browser) {
       window.addEventListener('keydown', handleKeyDown);
     }
   });
+
+  // 모바일 환경 체크 및 봉 너비 조정 함수
+  function checkAndAdjustBarWidth() {
+    const isSmallScreen = window.innerWidth < 768;
+    isMobile = isSmallScreen;
+    BAR_WIDTH = isSmallScreen ? 25 : 40; // 모바일에서는 더 작은 너비(25px)로 조정
+
+    // 이미 생성된 봉들의 너비 및 위치 업데이트
+    if (bars.length > 0) {
+      const spacing = (gameWidth - bars.length * BAR_WIDTH) / (bars.length + 1);
+      bars = bars.map((bar, index) => ({
+        ...bar,
+        width: BAR_WIDTH,
+        x: spacing + index * (BAR_WIDTH + spacing),
+      }));
+    }
+  }
 
   onDestroy(() => {
     if (animationId) {
@@ -441,75 +465,17 @@
     // 키보드 이벤트 리스너 제거
     if (browser) {
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', checkAndAdjustBarWidth);
     }
   });
 </script>
-
-<style>
-  .bar.caught {
-    opacity: 0.5;
-    transform: scale(0.95);
-  }
-
-  .bar.falling {
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  }
-
-  .level-up {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: #ff5722;
-    font-size: 48px;
-    font-weight: bold;
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
-    z-index: 10;
-  }
-
-  .game-message {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background-color: rgba(255, 255, 255, 0.9);
-    padding: 20px 30px;
-    border-radius: 10px;
-    text-align: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 20;
-  }
-
-  .level-clear h2 {
-    color: #3498db;
-  }
-
-  .game-over h2 {
-    color: #e74c3c;
-  }
-
-  .instructions {
-    text-align: center;
-    margin-top: 20px;
-    background-color: #fff;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    width: 100%;
-  }
-
-  h2 {
-    margin-bottom: 10px;
-    color: #333;
-  }
-</style>
 
 <svelte:head>
   <title>떨어지는 봉 잡기 게임</title>
 </svelte:head>
 
 <div class={cn('flex flex-col items-center gap-5', 'mx-auto p-5 lg:max-w-[800px]')}>
-  <div class={cn('flex w-full items-center justify-between', 'rounded-lg bg-white p-5 shadow-md')}>
+  <div class={cn('flex w-full flex-col items-center justify-between lg:flex-row', 'rounded-lg bg-white p-5 shadow-md')}>
     <h2 class={cn('text-lg font-bold')}>레벨: {level}</h2>
     <div class={cn('flex flex-col items-center gap-2')}>
       <div class={cn('text-sm font-bold', 'text-blue-500')}>
@@ -546,7 +512,8 @@
       <button
         class={cn(
           'absolute',
-          'h-[120px] w-10',
+          'h-[120px]',
+          isMobile ? 'w-[25px]' : 'w-10',
           'rounded-lg',
           'box-shadow',
           'cursor-pointer',
@@ -562,37 +529,25 @@
     {/each}
 
     {#if showLevelUp}
-      <div class="level-up" transition:fade={{ duration: 800, easing: cubicOut }}>
-        <span>레벨 {level}!</span>
-      </div>
+      <Modal title="레벨 {level}!" />
     {/if}
 
     {#if levelCompleted}
-      <div class="game-message level-clear">
-        <h2>레벨 {level} 클리어!</h2>
-        <Button color="primary" onclick={startGame}>다음 레벨</Button>
-      </div>
+      <Modal title="레벨 {level} 클리어!" buttonText="다음 레벨" onClose={startGame} />
     {/if}
-
     {#if gamePaused}
-      <div class="game-message">
-        <h2>일시정지</h2>
-        <p>계속하려면 '계속하기' 버튼을 클릭하세요</p>
-        <p>또는 'P' 키를 누르세요</p>
-      </div>
+      <Modal
+        title="일시정지"
+        message={`계속하려면 버튼을 클릭하세요 \n 또는 'P' 키나 'ESC' 키를 눌러 게임을 일시정지할 수 있습니다.`}
+      />
     {/if}
 
     {#if gameOver}
-      <div class="game-message game-over">
-        <h2>게임 오버!</h2>
-        <p>최종 레벨: {level}</p>
-        <Button onclick={startGame}>다시 시작</Button>
-      </div>
+      <Modal title="게임 오버!" message={`최종 레벨: ${level}`} buttonText="다시 시작" onClose={startGame} />
     {/if}
   </div>
-
-  <div class="instructions">
-    <h2>게임 방법</h2>
+  <div class={cn('mt-5 w-full p-4', 'rounded-lg', 'bg-white text-center shadow-md', 'z-10')}>
+    <h2 class={cn('text-lg font-bold')}>게임 방법</h2>
     <p>떨어지는 봉을 클릭하여 잡으세요!</p>
     <p>레벨 당 {requiredCatchesToClearLevel}개의 봉을 모두 잡으면 다음 레벨로 넘어갑니다.</p>
     <p>레벨이 올라갈수록 봉이 더 빨리, 더 많이 떨어집니다.</p>
