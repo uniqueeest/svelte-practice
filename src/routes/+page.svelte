@@ -471,29 +471,29 @@
 </script>
 
 <svelte:head>
-  <title>떨어지는 봉 잡기 게임</title>
+  <title>hold the bar</title>
 </svelte:head>
 
 <div class={cn('flex flex-col items-center gap-5', 'mx-auto p-5 lg:max-w-[800px]')}>
   <div class={cn('flex w-full flex-col items-center justify-between lg:flex-row', 'rounded-lg bg-white p-5 shadow-md')}>
-    <h2 class={cn('text-lg font-bold')}>레벨: {level}</h2>
+    <h2 class={cn('text-lg font-bold')}>level: {level}</h2>
     <div class={cn('flex flex-col items-center gap-2')}>
       <div class={cn('text-sm font-bold', 'text-blue-500')}>
-        진행도: {catchesInCurrentLevel}/{requiredCatchesToClearLevel}
+        progress: {catchesInCurrentLevel}/{requiredCatchesToClearLevel}
       </div>
-      <div class={cn('text-sm font-bold', 'text-red-500')}>하나라도 놓치면 게임오버!</div>
+      <div class={cn('text-sm font-bold', 'text-red-500')}>one miss, game over!</div>
     </div>
     <div class={cn('flex gap-2')}>
       {#if levelCompleted}
-        <Button onclick={startGame}>다음 레벨</Button>
+        <Button onclick={startGame}>next level</Button>
       {:else if !gameRunning || gameOver}
-        <Button onclick={startGame}>게임 시작</Button>
+        <Button onclick={startGame}>start</Button>
       {:else if gamePaused}
-        <Button color="secondary" onclick={startGame}>계속하기</Button>
-        <Button onclick={restartGame}>다시 시작</Button>
+        <Button color="secondary" onclick={startGame}>continue</Button>
+        <Button onclick={restartGame}>restart</Button>
       {:else}
-        <Button color="secondary" onclick={pauseGame}>일시정지</Button>
-        <Button onclick={restartGame}>다시 시작</Button>
+        <Button color="secondary" onclick={pauseGame}>pause</Button>
+        <Button onclick={restartGame}>restart</Button>
       {/if}
     </div>
   </div>
@@ -521,7 +521,7 @@
           bar.caught && 'opacity-50',
           bar.fallen && !bar.caught && 'box-shadow',
         )}
-        aria-label="봉"
+        aria-label="bar"
         onkeydown={() => {}}
         onclick={() => handleBarClick(bar)}
         style="left: {bar.x}px; top: {bar.y}px; background-color: {bar.color};"
@@ -529,29 +529,26 @@
     {/each}
 
     {#if showLevelUp}
-      <Modal title="레벨 {level}!" />
+      <Modal title="level {level}!" />
     {/if}
 
     {#if levelCompleted}
-      <Modal title="레벨 {level} 클리어!" buttonText="다음 레벨" onClose={startGame} />
+      <Modal title="level {level} clear!" buttonText="next level" onClose={startGame} />
     {/if}
     {#if gamePaused}
-      <Modal
-        title="일시정지"
-        message={`계속하려면 버튼을 클릭하세요 \n 또는 'P' 키나 'ESC' 키를 눌러 게임을 일시정지할 수 있습니다.`}
-      />
+      <Modal title="pause" message={`click the button to continue \n or press 'P' or 'ESC' to pause the game.`} />
     {/if}
 
     {#if gameOver}
-      <Modal title="게임 오버!" message={`최종 레벨: ${level}`} buttonText="다시 시작" onClose={startGame} />
+      <Modal title="game over!" message={`final level: ${level}`} buttonText="restart" onClose={startGame} />
     {/if}
   </div>
   <div class={cn('mt-5 w-full p-4', 'rounded-lg', 'bg-white text-center shadow-md', 'z-10')}>
-    <h2 class={cn('text-lg font-bold')}>게임 방법</h2>
-    <p>떨어지는 봉을 클릭하여 잡으세요!</p>
-    <p>레벨 당 {requiredCatchesToClearLevel}개의 봉을 모두 잡으면 다음 레벨로 넘어갑니다.</p>
-    <p>레벨이 올라갈수록 봉이 더 빨리, 더 많이 떨어집니다.</p>
-    <p>'P' 키나 'ESC' 키를 눌러 게임을 일시정지할 수 있습니다.</p>
-    <p>봉을 하나라도 놓치면 게임이 종료됩니다!</p>
+    <h2 class={cn('text-lg font-bold')}>how to play</h2>
+    <p>click the bar to catch it!</p>
+    <p>catch all the bars in level {requiredCatchesToClearLevel} to go to next level.</p>
+    <p>the level goes up, the bar falls faster and more.</p>
+    <p>press 'P' or 'ESC' to pause the game.</p>
+    <p>one miss, game over!</p>
   </div>
 </div>
